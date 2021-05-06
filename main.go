@@ -17,6 +17,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"crypto/subtle"
 
 	"github.com/DomZippilli/gcs-proxy-cloud-function/common"
 	"github.com/DomZippilli/gcs-proxy-cloud-function/config"
@@ -25,6 +26,33 @@ import (
 
 	storage "cloud.google.com/go/storage"
 )
+
+// https://stackoverflow.com/a/39591234
+// BasicAuth wraps a handler requiring HTTP basic auth for it using the given
+// username and password and the specified realm, which shouldn't contain quotes.
+//
+// Most web browser display a dialog with something like:
+//
+//    The website says: "<realm>"
+//
+// Which is really stupid so you may want to set the realm to a message rather than
+// an actual realm.
+func BasicAuth(handler http.HandlerFunc, username, password, realm string) http.HandlerFunc {
+
+	return func(w http.ResponseWriter, r *http.Request) {
+
+			user, pass, ok := r.BasicAuth()
+
+			if !ok || subtle.ConstantTimeCompare([]byte(user), []byte(username)) != 1 || subtle.ConstantTimeCompare([]byte(pass), []byte(password)) != 1 {
+					w.Header().Set("WWW-Authenticate", `Basic realm="`+realm+`"`)
+					w.WriteHeader(401)
+					w.Write([]byte("Unauthorised.\n"))
+					return
+			}
+
+			handler(w, r)
+	}
+}
 
 func setup() {
 	// set the bucket name from environment variable
@@ -44,7 +72,7 @@ func main() {
 	// initialize
 	log.Print("starting server...")
 	setup()
-	http.HandleFunc("/", ProxyHTTPGCS)
+	http.HandleFunc("/", BasicAuth(ProxyHTTPGCS, os.Getenv("USERNAME"), os.Getenv("PASSWORD"), "Sign in"))
 
 	// Determine port for HTTP service.
 	port := os.Getenv("PORT")
