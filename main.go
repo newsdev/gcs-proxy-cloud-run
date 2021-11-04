@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"crypto/subtle"
+	"strings"
 
 	"github.com/DomZippilli/gcs-proxy-cloud-function/common"
 	"github.com/DomZippilli/gcs-proxy-cloud-function/config"
@@ -37,13 +38,25 @@ import (
 //
 // Which is really stupid so you may want to set the realm to a message rather than
 // an actual realm.
-func BasicAuth(handler http.HandlerFunc, username, password, realm string) http.HandlerFunc {
+//
+// Parses a comma separated list of username:password, e.g. "mike:abc123,sam:def456"
+func BasicAuth(handler http.HandlerFunc, usernamesPasswords, realm string) http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
+			loginFound := false
 			user, pass, ok := r.BasicAuth()
+	
+			eachUsernamePassword := strings.Split(usernamesPasswords, ",")
+			for _, usernamePassword := range eachUsernamePassword {
+					userPass := strings.Split(usernamePassword, ":")
+					loginFound := subtle.ConstantTimeCompare([]byte(user), []byte(userPass[0])) == 1 && subtle.ConstantTimeCompare([]byte(pass), []byte(userPass[1])) == 1
+					if loginFound	{
+						break
+					}
+			}
 
-			if !ok || subtle.ConstantTimeCompare([]byte(user), []byte(username)) != 1 || subtle.ConstantTimeCompare([]byte(pass), []byte(password)) != 1 {
+			if !ok || !loginFound {
 					w.Header().Set("WWW-Authenticate", `Basic realm="`+realm+`"`)
 					w.WriteHeader(401)
 					w.Write([]byte("Unauthorised.\n"))
@@ -72,7 +85,7 @@ func main() {
 	// initialize
 	log.Print("starting server...")
 	setup()
-	http.HandleFunc("/", BasicAuth(ProxyHTTPGCS, os.Getenv("USERNAME"), os.Getenv("PASSWORD"), "Sign in"))
+	http.HandleFunc("/", BasicAuth(ProxyHTTPGCS, os.Getenv("USERPASS"), "Sign in"))
 
 	// Determine port for HTTP service.
 	port := os.Getenv("PORT")
