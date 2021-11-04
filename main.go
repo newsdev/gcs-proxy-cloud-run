@@ -15,9 +15,9 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"net/http"
 	"os"
-	"crypto/subtle"
 	"strings"
 
 	"github.com/DomZippilli/gcs-proxy-cloud-function/common"
@@ -44,26 +44,26 @@ func BasicAuth(handler http.HandlerFunc, usernamesPasswords, realm string) http.
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
-			loginFound := false
-			user, pass, ok := r.BasicAuth()
-	
-			eachUsernamePassword := strings.Split(usernamesPasswords, ",")
-			for _, usernamePassword := range eachUsernamePassword {
-					userPass := strings.Split(usernamePassword, ":")
-					loginFound := subtle.ConstantTimeCompare([]byte(user), []byte(userPass[0])) == 1 && subtle.ConstantTimeCompare([]byte(pass), []byte(userPass[1])) == 1
-					if loginFound	{
-						break
-					}
-			}
+		loginFound := false
+		user, pass, ok := r.BasicAuth()
 
-			if !ok || !loginFound {
-					w.Header().Set("WWW-Authenticate", `Basic realm="`+realm+`"`)
-					w.WriteHeader(401)
-					w.Write([]byte("Unauthorised.\n"))
-					return
+		eachUsernamePassword := strings.Split(usernamesPasswords, ",")
+		for _, usernamePassword := range eachUsernamePassword {
+			userPass := strings.Split(usernamePassword, ":")
+			loginFound = subtle.ConstantTimeCompare([]byte(user), []byte(userPass[0])) == 1 && subtle.ConstantTimeCompare([]byte(pass), []byte(userPass[1])) == 1
+			if loginFound {
+				break
 			}
+		}
 
-			handler(w, r)
+		if !ok || !loginFound {
+			w.Header().Set("WWW-Authenticate", `Basic realm="`+realm+`"`)
+			w.WriteHeader(401)
+			w.Write([]byte("Unauthorised.\n"))
+			return
+		}
+
+		handler(w, r)
 	}
 }
 
